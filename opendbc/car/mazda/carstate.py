@@ -19,14 +19,15 @@ class CarState(CarStateBase):
     self.lkas_allowed_speed = False
 
     self.distance_button = 0
-    self.accel_button = 0
-    self.decel_button = 0
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.pt]
     cp_cam = can_parsers[Bus.cam]
 
     ret = structs.CarState()
+
+    prev_distance_button = self.distance_button
+    self.distance_button = cp.vl["CRZ_BTNS"]["DISTANCE_LESS"]
 
     self.parse_wheel_speeds(ret,
       cp.vl["WHEEL_SPEEDS"]["FL"],
@@ -83,6 +84,9 @@ class CarState(CarStateBase):
     #       it should be used for carState.cruiseState.nonAdaptive instead
     ret.cruiseState.available = cp.vl["CRZ_CTRL"]["CRZ_AVAILABLE"] == 1
     ret.cruiseState.enabled = cp.vl["CRZ_CTRL"]["CRZ_ACTIVE"] == 1
+    # Without stock ACC (e.g. no MRCC), CRZ_AVAILABLE may never set; still allow engage (button path, pcmCruise=False).
+    if self.CP.openpilotLongitudinalControl and not self.CP.pcmCruise:
+      ret.cruiseState.available = True
     ret.cruiseState.standstill = cp.vl["PEDALS"]["STANDSTILL"] == 1
     ret.cruiseState.speed = cp.vl["CRZ_EVENTS"]["CRZ_SPEED"] * CV.KPH_TO_MS
 
@@ -111,19 +115,8 @@ class CarState(CarStateBase):
     self.cam_laneinfo = cp_cam.vl["CAM_LANEINFO"]
     ret.steerFaultPermanent = cp_cam.vl["CAM_LKAS"]["ERR_BIT_1"] == 1
 
-    # cruise control button events: distance, inc, and dec
-    prev_distance_button = self.distance_button
-    prev_accel_button = self.accel_button
-    prev_decel_button = self.decel_button
-    self.distance_button = cp.vl["CRZ_BTNS"]["DISTANCE_LESS"]
-    self.accel_button = cp.vl["CRZ_BTNS"]["RES"]
-    self.decel_button = cp.vl["CRZ_BTNS"]["SET_M"]
-
-    ret.buttonEvents = [
-      *create_button_events(self.distance_button, prev_distance_button, {1: ButtonType.gapAdjustCruise}),
-      *create_button_events(self.accel_button, prev_accel_button, {1: ButtonType.accelCruise}),
-      *create_button_events(self.decel_button, prev_decel_button, {1: ButtonType.decelCruise}),
-    ]
+    # TODO: add button types for inc and dec
+    ret.buttonEvents = create_button_events(self.distance_button, prev_distance_button, {1: ButtonType.gapAdjustCruise})
 
     return ret
 

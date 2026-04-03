@@ -19,6 +19,7 @@ class CarControllerParams:
   STEER_DRIVER_ALLOWANCE = 15     # allowed driver torque before start limiting
   STEER_DRIVER_MULTIPLIER = 1     # weight driver torque
   STEER_DRIVER_FACTOR = 1         # from dbc
+  STEER_ERROR_MAX = 350           # max delta between torque cmd and torque motor
   STEER_STEP = 1  # 100 Hz
 
   def __init__(self, CP):
@@ -69,6 +70,7 @@ class CAR(Platforms):
     [MazdaCarDocs("Mazda CX-9 2021-23", video="https://youtu.be/dA3duO4a0O4")],
     MAZDA_CX9.specs
   )
+  # CX-5 2024 Chile (engine PY40, trans PXGG, EPS/ABS KSD5, cam GSH7): FW in fingerprints.FW_VERSIONS[MAZDA_CX5_2022]
   MAZDA_CX5_2022 = MazdaPlatformConfig(
     [MazdaCarDocs("Mazda CX-5 2022-25")],
     MAZDA_CX5.specs,

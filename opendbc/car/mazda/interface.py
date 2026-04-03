@@ -15,6 +15,7 @@ class CarInterface(CarInterfaceBase):
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
     ret.brand = "mazda"
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.mazda)]
+    # No Mazda port uses comma radar tracks; longitudinal lead is vision / model.
     ret.radarUnavailable = True
 
     ret.dashcamOnly = candidate not in (CAR.MAZDA_CX5_2022, CAR.MAZDA_CX9_2021)
@@ -26,6 +27,11 @@ class CarInterface(CarInterfaceBase):
 
     if candidate not in (CAR.MAZDA_CX5_2022,):
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
+
+    # CX-5 2022–25: MRCC/radar ACC may be absent — vision longitudinal, not PCM-cruise-gated.
+    if candidate == CAR.MAZDA_CX5_2022:
+      ret.openpilotLongitudinalControl = True
+      ret.pcmCruise = False
 
     ret.centerToFront = ret.wheelbase * 0.41
 
