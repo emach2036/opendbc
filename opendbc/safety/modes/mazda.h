@@ -15,6 +15,11 @@
 #define MAZDA_MAIN 0
 #define MAZDA_CAM  2
 
+// Vision-Only / no MRCC: engage with steering-wheel buttons (CRZ_BTNS), not CRZ_ACTIVE on bus.
+static bool mazda_prev_res = false;
+static bool mazda_prev_set_m = false;
+static bool mazda_prev_cancel = false;
+
 // track msgs coming from OP so that we know what CAM msgs to drop and what to forward
 static void mazda_rx_hook(const CANPacket_t *msg) {
   if ((int)msg->bus == MAZDA_MAIN) {
@@ -30,10 +35,26 @@ static void mazda_rx_hook(const CANPacket_t *msg) {
       update_sample(&torque_driver, torque_driver_new);
     }
 
-    // enter controls on rising edge of ACC, exit controls on ACC off
-    if (msg->addr == MAZDA_CRZ_CTRL) {
-      bool cruise_engaged = msg->data[0] & 0x8U;
-      pcm_cruise_check(cruise_engaged);
+    // DBC: RES @ bit 2, SET_M @ bit 5, CAN_OFF (cancel) @ bit 0 of CRZ_BTNS byte 0.
+    if (msg->addr == MAZDA_CRZ_BTNS) {
+      const bool res = GET_BIT(msg, 2U);
+      const bool set_m = GET_BIT(msg, 5U);
+      const bool cancel_btn = GET_BIT(msg, 0U);
+
+      const bool res_rise = res && !mazda_prev_res;
+      const bool set_rise = set_m && !mazda_prev_set_m;
+      const bool cancel_rise = cancel_btn && !mazda_prev_cancel;
+
+      if (res_rise || set_rise) {
+        controls_allowed = true;
+      }
+      if (cancel_rise) {
+        controls_allowed = false;
+      }
+
+      mazda_prev_res = res;
+      mazda_prev_set_m = set_m;
+      mazda_prev_cancel = cancel_btn;
     }
 
     if (msg->addr == MAZDA_ENGINE_DATA) {
@@ -42,6 +63,9 @@ static void mazda_rx_hook(const CANPacket_t *msg) {
 
     if (msg->addr == MAZDA_PEDALS) {
       brake_pressed = (msg->data[0] & 0x10U);
+      if (brake_pressed) {
+        controls_allowed = false;
+      }
     }
   }
 }
@@ -87,7 +111,7 @@ static safety_config mazda_init(uint16_t param) {
   static const CanMsg MAZDA_TX_MSGS[] = {{MAZDA_LKAS, 0, 8, .check_relay = true}, {MAZDA_CRZ_BTNS, 0, 8, .check_relay = false}, {MAZDA_LKAS_HUD, 0, 8, .check_relay = true}};
 
   static RxCheck mazda_rx_checks[] = {
-    {.msg = {{MAZDA_CRZ_CTRL,     0, 8, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // CRZ_CTRL omitted: MRCC-less cars may not send it; engagement is via CRZ_BTNS + brake above.
     {.msg = {{MAZDA_CRZ_BTNS,     0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     {.msg = {{MAZDA_STEER_TORQUE, 0, 8, 83U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     {.msg = {{MAZDA_ENGINE_DATA,  0, 8, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},

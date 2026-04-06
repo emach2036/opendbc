@@ -60,14 +60,39 @@ class TestMazdaSafety(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTes
     values = {"CRZ_ACTIVE": enable}
     return self.packer.make_can_msg_safety("CRZ_CTRL", 0, values)
 
-  def _button_msg(self, resume=False, cancel=False):
+  def _button_msg(self, resume=False, cancel=False, set_m=False):
     values = {
       "CAN_OFF": cancel,
       "CAN_OFF_INV": (cancel + 1) % 2,
       "RES": resume,
       "RES_INV": (resume + 1) % 2,
+      "SET_M": set_m,
+      "SET_M_INV": (set_m + 1) % 2,
     }
     return self.packer.make_can_msg_safety("CRZ_BTNS", 0, values)
+
+  def test_enable_control_allowed_from_cruise(self):
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx(self._button_msg())
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx(self._button_msg(resume=True))
+    self.assertTrue(self.safety.get_controls_allowed())
+
+  def test_enable_control_allowed_from_set(self):
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx(self._button_msg())
+    self._rx(self._button_msg(set_m=True))
+    self.assertTrue(self.safety.get_controls_allowed())
+
+  def test_disable_control_allowed_from_cruise(self):
+    self.safety.set_controls_allowed(1)
+    self._rx(self._button_msg())
+    self._rx(self._button_msg(cancel=True))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_cruise_engaged_prev(self):
+    # Mazda uses button-based engagement; cruise_engaged_prev is not updated from CRZ_CTRL.
+    pass
 
   def test_buttons(self):
     # only cancel allows while controls not allowed

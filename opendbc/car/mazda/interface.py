@@ -14,6 +14,8 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
     ret.brand = "mazda"
+    # Panda Mazda safety (see opendbc/safety/modes/mazda.h): Vision-Only uses button-based controls_allowed.
+    # CarParams alone does not change firmware; we keep SafetyModel.mazda (not allOutput).
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.mazda)]
     # No Mazda port uses comma radar tracks; longitudinal lead is vision / model.
     ret.radarUnavailable = True

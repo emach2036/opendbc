@@ -19,6 +19,11 @@ class CarState(CarStateBase):
     self.lkas_allowed_speed = False
 
     self.distance_button = 0
+    self.cruise_enabled_prev = False
+    self.software_cruise_engaged = False
+    self.prev_res = 0
+    self.prev_set_m = 0
+    self.prev_can_off = 0
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.pt]
@@ -80,13 +85,33 @@ class CarState(CarStateBase):
     else:
       self.lkas_allowed_speed = True
 
+    res = int(cp.vl["CRZ_BTNS"]["RES"])
+    set_m = int(cp.vl["CRZ_BTNS"]["SET_M"])
+    can_off = int(cp.vl["CRZ_BTNS"]["CAN_OFF"])
+    cruise_btn_events = [
+      *create_button_events(res, self.prev_res, {1: ButtonType.resumeCruise}),
+      *create_button_events(set_m, self.prev_set_m, {1: ButtonType.decelCruise}),
+      *create_button_events(can_off, self.prev_can_off, {1: ButtonType.cancel}),
+    ]
+    self.prev_res, self.prev_set_m, self.prev_can_off = res, set_m, can_off
+
     # TODO: the signal used for available seems to be the adaptive cruise signal, instead of the main on
     #       it should be used for carState.cruiseState.nonAdaptive instead
     ret.cruiseState.available = cp.vl["CRZ_CTRL"]["CRZ_AVAILABLE"] == 1
     ret.cruiseState.enabled = cp.vl["CRZ_CTRL"]["CRZ_ACTIVE"] == 1
-    # Without stock ACC (e.g. no MRCC), CRZ_AVAILABLE may never set; still allow engage (button path, pcmCruise=False).
+    # Without stock ACC (e.g. no MRCC), CRZ_AVAILABLE / CRZ_ACTIVE may never assert; latch cruise in software.
     if self.CP.openpilotLongitudinalControl and not self.CP.pcmCruise:
       ret.cruiseState.available = True
+      if ret.brakePressed:
+        self.software_cruise_engaged = False
+      else:
+        for be in cruise_btn_events:
+          if be.pressed:
+            if be.type in (ButtonType.resumeCruise, ButtonType.decelCruise):
+              self.software_cruise_engaged = True
+            elif be.type == ButtonType.cancel:
+              self.software_cruise_engaged = False
+      ret.cruiseState.enabled = self.software_cruise_engaged
     ret.cruiseState.standstill = cp.vl["PEDALS"]["STANDSTILL"] == 1
     ret.cruiseState.speed = cp.vl["CRZ_EVENTS"]["CRZ_SPEED"] * CV.KPH_TO_MS
 
@@ -115,14 +140,28 @@ class CarState(CarStateBase):
     self.cam_laneinfo = cp_cam.vl["CAM_LANEINFO"]
     ret.steerFaultPermanent = cp_cam.vl["CAM_LKAS"]["ERR_BIT_1"] == 1
 
-    # TODO: add button types for inc and dec
-    ret.buttonEvents = create_button_events(self.distance_button, prev_distance_button, {1: ButtonType.gapAdjustCruise})
+    ret.buttonEvents = [
+      *create_button_events(self.distance_button, prev_distance_button, {1: ButtonType.gapAdjustCruise}),
+      *cruise_btn_events,
+    ]
+
+    self.cruise_enabled_prev = ret.cruiseState.enabled
 
     return ret
 
   @staticmethod
   def get_can_parsers(CP):
+    pt_messages: list[tuple[str, float | int]] = []
+    if CP.openpilotLongitudinalControl and not CP.pcmCruise:
+      checks = (
+        ("CRZ_CTRL", 50),
+        ("CRZ_EVENTS", 50),
+        ("CRZ_INFO", 50),
+      )
+      optional = frozenset({"CRZ_CTRL", "CRZ_EVENTS", "CRZ_INFO"})
+      pt_messages = [(name, float("nan") if name in optional else freq) for name, freq in checks]
+
     return {
-      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
+      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
     }
