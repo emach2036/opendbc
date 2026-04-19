@@ -227,7 +227,9 @@ class CANParser:
       frames = entry[1]
       bus_empty = True
       for address, dat, src in frames:
-        if src != self.bus:
+        # Physical bus 0–2; comma/cereal may set bit 7 (+128) when frames are relay-forwarded (e.g. src 130 == bus 2).
+        phys = src & 0x7F if src >= 128 else src
+        if phys != self.bus:
           continue
         bus_empty = False
         state = self.message_states.get(address)

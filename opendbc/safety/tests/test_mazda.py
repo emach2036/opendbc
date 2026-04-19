@@ -90,6 +90,13 @@ class TestMazdaSafety(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTes
     self._rx(self._button_msg(cancel=True))
     self.assertFalse(self.safety.get_controls_allowed())
 
+  def test_pedals_on_camera_bus(self):
+    """PEDALS may be forwarded on physical bus 2 (cereal src 130); Panda safety uses bus 2, not 130."""
+    values = {"BRAKE_ON": 1}
+    msg = self.packer.make_can_msg_safety("PEDALS", 2, values)
+    self.assertTrue(self._rx(msg))
+    self.assertTrue(self.safety.get_brake_pressed_prev())
+
   def test_cruise_engaged_prev(self):
     # Mazda uses button-based engagement; cruise_engaged_prev is not updated from CRZ_CTRL.
     pass

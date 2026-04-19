@@ -11,11 +11,11 @@
 #define MAZDA_ENGINE_DATA   0x202U
 #define MAZDA_PEDALS        0x165U
 
-// CAN bus numbers
+// CAN bus numbers (Panda firmware: physical buses 0, 1, 2 only).
 #define MAZDA_MAIN 0
 #define MAZDA_CAM  2
-// C3X / some harnesses: PEDALS (0x165) forwarded off PT — scanner shows bus 130 vs PT bus 0.
-#define MAZDA_PEDALS_BUS_ALT 130U
+// PEDALS (0x165) on PT (0) or forwarded on camera bus (2). Logs/cereal may show src 130 (= 2 + 128 relay offset).
+#define MAZDA_PEDALS_BUS_ALT 2U
 
 // Vision-Only / no MRCC: engage with steering-wheel buttons (CRZ_BTNS), not CRZ_ACTIVE on bus.
 static bool mazda_prev_res = false;
