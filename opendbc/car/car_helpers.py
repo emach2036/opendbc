@@ -41,8 +41,7 @@ interfaces = load_interfaces(interface_names)
 
 def can_fingerprint(can_recv: CanRecvCallable) -> tuple[str | None, dict[int, dict]]:
   finger = gen_empty_fingerprint()
-  # Physical buses 0–2; relayed traffic may use src = bus + 128 (e.g. 130 for camera bus 2).
-  candidate_cars = {i: all_legacy_fingerprint_cars() for i in [0, 1, 2]}
+  candidate_cars = {i: all_legacy_fingerprint_cars() for i in [0, 1]}  # attempt fingerprint on both bus 0 and 1
   frame = 0
   car_fingerprint = None
   done = False
@@ -52,17 +51,16 @@ def can_fingerprint(can_recv: CanRecvCallable) -> tuple[str | None, dict[int, di
     can_packets = can_recv(wait_for_one=True)
     for can_packet in can_packets:
       for can in can_packet:
-        phys = can.src & 0x7F if can.src >= 128 else can.src
         # The fingerprint dict is generated for all buses, this way the car interface
         # can use it to detect a (valid) multipanda setup and initialize accordingly
-        if phys < 128:
-          if phys not in finger:
-            finger[phys] = {}
-          finger[phys][can.address] = len(can.dat)
+        if can.src < 128:
+          if can.src not in finger:
+            finger[can.src] = {}
+          finger[can.src][can.address] = len(can.dat)
 
         for b in candidate_cars:
           # Ignore extended messages and VIN query response.
-          if phys == b and can.address < 0x800 and can.address not in (0x7df, 0x7e0, 0x7e8):
+          if can.src == b and can.address < 0x800 and can.address not in (0x7df, 0x7e0, 0x7e8):
             candidate_cars[b] = eliminate_incompatible_cars(can, candidate_cars[b])
 
       # if we only have one car choice and the time since we got our first

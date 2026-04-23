@@ -61,9 +61,8 @@ class CarState(CarStateBase):
     ret.steeringTorqueEps = cp.vl["STEER_TORQUE"]["STEER_TORQUE_MOTOR"]
     ret.steeringRateDeg = cp.vl["STEER_RATE"]["STEER_ANGLE_RATE"]
 
-    pv = self._pedals_vl(cp, cp_cam)
     # TODO: this should be from 0 - 1.
-    ret.brakePressed = pv["BRAKE_ON"] == 1
+    ret.brakePressed = cp.vl["PEDALS"]["BRAKE_ON"] == 1
     ret.brake = cp.vl["BRAKE"]["BRAKE_PRESSURE"]
 
     ret.seatbeltUnlatched = cp.vl["SEATBELT"]["DRIVER_SEATBELT"] == 0
@@ -113,7 +112,7 @@ class CarState(CarStateBase):
             elif be.type == ButtonType.cancel:
               self.software_cruise_engaged = False
       ret.cruiseState.enabled = self.software_cruise_engaged
-    ret.cruiseState.standstill = pv["STANDSTILL"] == 1
+    ret.cruiseState.standstill = cp.vl["PEDALS"]["STANDSTILL"] == 1
     ret.cruiseState.speed = cp.vl["CRZ_EVENTS"]["CRZ_SPEED"] * CV.KPH_TO_MS
 
     # stock lkas should be on
@@ -150,21 +149,12 @@ class CarState(CarStateBase):
 
     return ret
 
-  def _pedals_vl(self, cp, cp_cam):
-    # Vision-only / MRCC-less: PEDALS is often forwarded on camera bus (2); cereal may show src 130 (= 2 + 128).
-    if self.CP.openpilotLongitudinalControl and not self.CP.pcmCruise:
-      return cp_cam.vl["PEDALS"]
-    return cp.vl["PEDALS"]
-
   @staticmethod
   def get_can_parsers(CP):
-    vision_mrcc_less = CP.openpilotLongitudinalControl and not CP.pcmCruise
-    # PEDALS: require on PT (0) for stock-style cars; require on cam bus (2) when forwarded; optional on the unused bus so canValid stays true.
-    pedals_pt_freq: float | int = float("nan") if vision_mrcc_less else 50
-    pedals_cam_freq: float | int = 50 if vision_mrcc_less else float("nan")
-
-    pt_messages: list[tuple[str, float | int]] = [("PEDALS", pedals_pt_freq)]
-    if vision_mrcc_less:
+    pt_messages: list[tuple[str, float | int]] = []
+    if CP.openpilotLongitudinalControl and not CP.pcmCruise:
+      # Vision-only: require PEDALS on PT bus 0 (Panda safety still accepts PEDALS on bus 0 or 2 in C).
+      pt_messages = [("PEDALS", 50)]
       checks = (
         ("CRZ_CTRL", 50),
         ("CRZ_EVENTS", 50),
@@ -173,9 +163,7 @@ class CarState(CarStateBase):
       optional = frozenset({"CRZ_CTRL", "CRZ_EVENTS", "CRZ_INFO"})
       pt_messages.extend([(name, float("nan") if name in optional else freq) for name, freq in checks])
 
-    cam_messages: list[tuple[str, float | int]] = [("PEDALS", pedals_cam_freq)]
-
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, 2),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
     }
