@@ -153,15 +153,13 @@ class CarState(CarStateBase):
   def get_can_parsers(CP):
     pt_messages: list[tuple[str, float | int]] = []
     if CP.openpilotLongitudinalControl and not CP.pcmCruise:
-      # Vision-only: require PEDALS on PT bus 0 (Panda safety still accepts PEDALS on bus 0 or 2 in C).
-      pt_messages = [("PEDALS", 50)]
-      checks = (
-        ("CRZ_CTRL", 50),
-        ("CRZ_EVENTS", 50),
-        ("CRZ_INFO", 50),
-      )
-      optional = frozenset({"CRZ_CTRL", "CRZ_EVENTS", "CRZ_INFO"})
-      pt_messages.extend([(name, float("nan") if name in optional else freq) for name, freq in checks])
+      # Vision-only: all required PT signals (including PEDALS) on bus 0; CRZ_* optional when stock ACC is absent.
+      pt_messages = [
+        ("PEDALS", 50),
+        ("CRZ_CTRL", float("nan")),
+        ("CRZ_EVENTS", float("nan")),
+        ("CRZ_INFO", float("nan")),
+      ]
 
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
