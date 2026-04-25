@@ -27,15 +27,22 @@ class CarController(CarControllerBase):
                                                       CS.out.steeringTorque, CarControllerParams)
 
     if CC.cruiseControl.cancel:
-      # If brake is pressed, let us wait >70ms before trying to disable crz to avoid
-      # a race condition with the stock system, where the second cancel from openpilot
-      # will disable the crz 'main on'. crz ctrl msg runs at 50hz. 70ms allows us to
-      # read 3 messages and most likely sync state before we attempt cancel.
-      self.brake_counter = self.brake_counter + 1
-      if self.frame % 10 == 0 and not (CS.out.brakePressed and self.brake_counter < 7):
-        # Cancel Stock ACC if it's enabled while OP is disengaged
-        # Send at a rate of 10hz until we sync with stock ACC state
-        can_sends.append(mazdacan.create_button_cmd(self.packer, self.CP, CS.crz_btns_counter, Buttons.CANCEL))
+      # Vision-Only (no PCM cruise): never inject a CRZ_BTNS CANCEL. There is no stock ACC to sync
+      # with, and the injected message would itself trigger the CAN_OFF rising edge in the Panda
+      # mazda_rx_hook, clearing controls_allowed and producing a phantom Controls Mismatch the
+      # instant the user presses SET. The Panda already disengages on physical cancel/brake.
+      if self.CP.pcmCruise:
+        # If brake is pressed, let us wait >70ms before trying to disable crz to avoid
+        # a race condition with the stock system, where the second cancel from openpilot
+        # will disable the crz 'main on'. crz ctrl msg runs at 50hz. 70ms allows us to
+        # read 3 messages and most likely sync state before we attempt cancel.
+        self.brake_counter = self.brake_counter + 1
+        if self.frame % 10 == 0 and not (CS.out.brakePressed and self.brake_counter < 7):
+          # Cancel Stock ACC if it's enabled while OP is disengaged
+          # Send at a rate of 10hz until we sync with stock ACC state
+          can_sends.append(mazdacan.create_button_cmd(self.packer, self.CP, CS.crz_btns_counter, Buttons.CANCEL))
+      else:
+        self.brake_counter = 0
     else:
       self.brake_counter = 0
       if CC.cruiseControl.resume and self.frame % 5 == 0:
