@@ -52,6 +52,10 @@ class TestMazdaSafety(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTes
     values = {"BRAKE_ON": brake}
     return self.packer.make_can_msg_safety("PEDALS", 0, values)
 
+  def _user_brake_msg_alt_bus(self, brake):
+    values = {"BRAKE_ON": brake}
+    return self.packer.make_can_msg_safety("PEDALS", 2, values)
+
   def _user_gas_msg(self, gas):
     values = {"PEDAL_GAS": gas}
     return self.packer.make_can_msg_safety("ENGINE_DATA", 0, values)
@@ -71,28 +75,42 @@ class TestMazdaSafety(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTes
     }
     return self.packer.make_can_msg_safety("CRZ_BTNS", 0, values)
 
+  # Vision-Only cars engage via CRZ_BTNS, not CRZ_CTRL.
+  def test_disable_control_allowed_from_cruise(self):
+    pass
+
   def test_enable_control_allowed_from_cruise(self):
-    self.assertFalse(self.safety.get_controls_allowed())
+    pass
+
+  def test_cruise_engaged_prev(self):
+    pass
+
+  def test_enable_control_allowed_from_buttons(self):
     self._rx(self._button_msg())
     self.assertFalse(self.safety.get_controls_allowed())
+
     self._rx(self._button_msg(resume=True))
     self.assertTrue(self.safety.get_controls_allowed())
 
-  def test_enable_control_allowed_from_set(self):
-    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx(self._button_msg(resume=False))
+    self.assertTrue(self.safety.get_controls_allowed())
+
     self._rx(self._button_msg())
     self._rx(self._button_msg(set_m=True))
     self.assertTrue(self.safety.get_controls_allowed())
 
-  def test_disable_control_allowed_from_cruise(self):
-    self.safety.set_controls_allowed(1)
-    self._rx(self._button_msg())
+  def test_disable_control_allowed_from_cancel_button(self):
+    self._rx(self._button_msg(resume=True))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self._rx(self._button_msg(resume=False))
     self._rx(self._button_msg(cancel=True))
     self.assertFalse(self.safety.get_controls_allowed())
 
-  def test_cruise_engaged_prev(self):
-    # Mazda uses button-based engagement; cruise_engaged_prev is not updated from CRZ_CTRL.
-    pass
+  def test_pedals_alt_bus(self):
+    self._rx(self._user_brake_msg_alt_bus(1))
+    self.assertTrue(self.safety.get_brake_pressed_prev())
+    self._rx(self._user_brake_msg_alt_bus(0))
+    self.assertFalse(self.safety.get_brake_pressed_prev())
 
   def test_buttons(self):
     # only cancel allows while controls not allowed
