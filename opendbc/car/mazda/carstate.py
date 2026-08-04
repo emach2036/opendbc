@@ -60,8 +60,17 @@ class CarState(CarStateBase):
     ret.steeringTorqueEps = cp.vl["STEER_TORQUE"]["STEER_TORQUE_MOTOR"]
     ret.steeringRateDeg = cp.vl["STEER_RATE"]["STEER_ANGLE_RATE"]
 
-    # Vision-Only cars may only echo PEDALS on the camera-side bus (physical bus 2).
-    pedals_cp = cp_cam if (self.CP.openpilotLongitudinalControl and not self.CP.pcmCruise) else cp
+    # Vision-Only: PEDALS (0x165) may be on bus 0 and/or camera bus 2. Prefer the freshest.
+    vision_only = self.CP.openpilotLongitudinalControl and not self.CP.pcmCruise
+    if vision_only:
+      pedals_addr = cp.dbc.name_to_msg["PEDALS"].address
+      cam_st = cp_cam.message_states.get(pedals_addr)
+      pt_st = cp.message_states.get(pedals_addr)
+      cam_ts = cam_st.timestamps[-1] if cam_st and cam_st.timestamps else 0
+      pt_ts = pt_st.timestamps[-1] if pt_st and pt_st.timestamps else 0
+      pedals_cp = cp_cam if cam_ts >= pt_ts else cp
+    else:
+      pedals_cp = cp
 
     # TODO: this should be from 0 - 1.
     ret.brakePressed = pedals_cp.vl["PEDALS"]["BRAKE_ON"] == 1
@@ -167,12 +176,16 @@ class CarState(CarStateBase):
   @staticmethod
   def get_can_parsers(CP):
     pt_messages: list[tuple[str, float | int]] = []
+    cam_messages: list[tuple[str, float | int]] = []
     if CP.openpilotLongitudinalControl and not CP.pcmCruise:
-      optional = frozenset({"CRZ_CTRL", "CRZ_EVENTS", "CRZ_INFO"})
-      for name, freq in (("CRZ_CTRL", 50), ("CRZ_EVENTS", 50), ("CRZ_INFO", 50)):
-        pt_messages.append((name, float("nan") if name in optional else freq))
+      # MRCC-less cars may omit these; nan => ignore_alive so missing msgs don't trip canError.
+      for name in ("CRZ_CTRL", "CRZ_EVENTS", "CRZ_INFO"):
+        pt_messages.append((name, float("nan")))
+      # PEDALS may appear on pt and/or cam; accept either without failing canValid.
+      pt_messages.append(("PEDALS", float("nan")))
+      cam_messages.append(("PEDALS", float("nan")))
 
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, 2),
     }
