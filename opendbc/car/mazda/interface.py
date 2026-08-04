@@ -14,6 +14,7 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
     ret.brand = "mazda"
+    # Panda Mazda safety: Vision-Only uses button-based controls_allowed.
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.mazda)]
     ret.radarUnavailable = True
 
@@ -26,6 +27,11 @@ class CarInterface(CarInterfaceBase):
 
     if candidate not in (CAR.MAZDA_CX5_2022,):
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
+
+    # CX-5 2022+: MRCC/radar ACC may be absent — vision longitudinal; software cruise latch + button safety.
+    if candidate == CAR.MAZDA_CX5_2022:
+      ret.openpilotLongitudinalControl = True
+      ret.pcmCruise = False
 
     ret.centerToFront = ret.wheelbase * 0.41
 
